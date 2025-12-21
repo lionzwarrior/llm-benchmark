@@ -23,7 +23,7 @@ source venv/bin/activate
 chmod +x monitor.sh
 
 ./monitor.sh & MONITOR_PID=$!
-python benchmark_ollama_csqa_parallel.py
+python benchmark_ollama_truthfulqa_parallel.py
 while read pid; do
     kill "$pid" 2>/dev/null
 done < monitor_pids.txt
