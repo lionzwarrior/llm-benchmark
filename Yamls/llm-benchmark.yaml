@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-benchmark
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-benchmark
+  template:
+    metadata:
+      labels:
+        app: llm-benchmark
+    spec:
+      containers:
+        - name: benchmark
+          image: lionzwarrior10/llm-benchmark:latest
+          imagePullPolicy: Always

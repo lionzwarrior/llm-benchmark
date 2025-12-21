@@ -1,0 +1,13 @@
+
+--- Benchmark Results ---
+Model: llama3.1:8b
+Samples tested: 817
+Average latency: 3.29s
+95th percentile latency: 6.00s
+Throughput: 0.30 req/s
+Total duration: 2688.19s
+
+--- Execution Time ---
+Start time: 2025-12-15 05:52:19
+End time:   2025-12-15 06:37:08
+Total execution time: 2688.21 seconds

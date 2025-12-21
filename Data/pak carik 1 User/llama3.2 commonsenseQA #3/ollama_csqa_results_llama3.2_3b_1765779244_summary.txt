@@ -1,0 +1,14 @@
+
+--- Benchmark Results ---
+Model: llama3.2:3b
+Samples tested: 1221
+Accuracy: 60.20%
+Average latency: 0.34s
+95th percentile latency: 0.55s
+Throughput: 2.94 req/s
+Total duration: 415.10s
+
+--- Execution Time ---
+Start time: 2025-12-15 13:14:04
+End time:   2025-12-15 13:20:59
+Total execution time: 415.11 seconds

@@ -1,0 +1,14 @@
+# Core
+requests>=2.31.0
+pandas>=2.2.0
+
+# For performance metrics and CSV export
+numpy>=1.26.0
+
+# Optional: if you plan to visualize latency distributions
+matplotlib>=3.8.0
+
+# Optional: tqdm for progress bars
+tqdm>=4.66.0
+
+aiohttp
