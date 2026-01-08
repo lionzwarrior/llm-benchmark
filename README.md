@@ -1,3 +1,4 @@
+## Initial setup for running the benchmark
 py -V:3.12 -m venv venv
 
 venv/Scripts/activate
