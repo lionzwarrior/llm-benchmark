@@ -7,19 +7,28 @@ import asyncio
 import aiohttp
 import statistics
 import pandas as pd
+import logging
+import sys
 
-# --- Configuration ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger(__name__)
+
 OLLAMA_URL = "http://ollama-service:11434/api/generate"
 MODEL = "llama3.1:8b"
 DATA_FILE = "dev_rand_split.jsonl"
-NUM_QUESTIONS = 1221  # number of rows to load
-CONCURRENT_USERS = 2  # each worker runs ENTIRE dataset
+NUM_QUESTIONS = 1221
+CONCURRENT_USERS = 20
 OUTPUT_CSV = f"ollama_async_results_{MODEL.replace(':', '_')}_{int(time.time())}.csv"
 OUTPUT_LOG = OUTPUT_CSV.replace(".csv", "_summary.txt")
+NS_TO_S = 1e-9
 TZ = ZoneInfo("Asia/Jakarta")
 
 
-# --- Query Ollama API ---
 async def query_ollama(session, prompt):
     start = time.time()
     try:
@@ -30,19 +39,33 @@ async def query_ollama(session, prompt):
                 "prompt": prompt,
                 "stream": False,
             },
-            timeout=120,
         ) as resp:
             data = await resp.json()
+
             output = data.get("response", "").strip()
-    except Exception as e:
-        print(f"[Error] {e}")
-        output = "ERROR"
+
+            # Ollama native metrics
+            prompt_tokens = data.get("prompt_eval_count", 0)
+            gen_tokens = data.get("eval_count", 0)
+            gen_eval_ns = data.get("eval_duration", 0)
+            total_ns = data.get("total_duration", 0)
+
+    except Exception:
+        logger.exception("Ollama request failed")
+        return "ERROR", 0, 0, 0, 0, 0
 
     latency = time.time() - start
-    return output, latency
+
+    return (
+        output,
+        latency,
+        prompt_tokens,
+        gen_tokens,
+        gen_eval_ns,
+        total_ns,
+    )
 
 
-# --- Process a single question ---
 async def process_question(session, index, data, worker_id):
     question = data["question"]
     labels = data["choices"]["label"]
@@ -57,9 +80,15 @@ async def process_question(session, index, data, worker_id):
         prompt += f"{label}. {choice}\n"
     prompt += "\nRespond with only the letter (A, B, C, D, or E)."
 
-    output, latency = await query_ollama(session, prompt)
+    (
+        output,
+        latency,
+        prompt_tokens,
+        gen_tokens,
+        gen_eval_ns,
+        total_ns,
+    ) = await query_ollama(session, prompt)
 
-    # Extract A–E
     match = re.search(r"\b([A-E])\b", output.upper())
     pred = match.group(1) if match else "-"
 
@@ -74,29 +103,42 @@ async def process_question(session, index, data, worker_id):
         "model": MODEL,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "raw_output": output,
+        "prompt_tokens": prompt_tokens,
+        "gen_tokens": gen_tokens,
+        "gen_eval_ns": gen_eval_ns,
+        "total_ns": total_ns,
     }
 
-    print(
-        f"[Worker {worker_id}] Q{index+1}/{NUM_QUESTIONS} | Latency: {latency:.2f}s | Pred: {pred} | True: {answer_key}"
+    logger.info(
+        "Worker %d | Q%d/%d | Latency=%.2fs | Pred=%s | True=%s",
+        worker_id,
+        index + 1,
+        NUM_QUESTIONS,
+        latency,
+        pred,
+        answer_key,
     )
+
     return result
 
 
-# --- Worker executes full dataset ---
 async def worker(worker_id, dataset, session, results):
-    print(f"Worker {worker_id} starting ({len(dataset)} questions)...")
+    logger.info("Worker %d starting (%d questions)", worker_id, len(dataset))
+
     for i, data in enumerate(dataset):
         result = await process_question(session, i, data, worker_id)
         results.append(result)
-    print(f"Worker {worker_id} finished.")
+
+    logger.info("Worker %d finished", worker_id)
 
 
-# --- Main async benchmark ---
 async def benchmark_async():
-    print(f"Launching benchmark with {CONCURRENT_USERS} workers...")
-    print(f"Each worker processes ALL {NUM_QUESTIONS} questions.\n")
+    logger.info(
+        "Launching benchmark | Workers=%d | Questions/worker=%d",
+        CONCURRENT_USERS,
+        NUM_QUESTIONS,
+    )
 
-    # Load dataset once
     base_dataset = []
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         for i, line in enumerate(f):
@@ -104,7 +146,6 @@ async def benchmark_async():
                 break
             base_dataset.append(json.loads(line))
 
-    # Duplicate dataset for each worker
     worker_datasets = [base_dataset[:] for _ in range(CONCURRENT_USERS)]
 
     start_time = time.time()
@@ -117,22 +158,32 @@ async def benchmark_async():
             )
             for worker_id in range(CONCURRENT_USERS)
         ]
-
         await asyncio.gather(*tasks)
 
     total_time = time.time() - start_time
     total_requests = len(results)
+    total_prompt_tokens = sum(r["prompt_tokens"] for r in results)
+    total_gen_tokens = sum(r["gen_tokens"] for r in results)
+    total_gen_time = sum(r["gen_eval_ns"] for r in results) * NS_TO_S
+    total_end_time = sum(r["total_ns"] for r in results) * NS_TO_S
 
-    # Metrics
     latencies = [r["latency_s"] for r in results]
     avg_latency = statistics.mean(latencies)
     p95_latency = sorted(latencies)[int(0.95 * len(latencies)) - 1]
     throughput = total_requests / total_time
     accuracy = sum(r["correct"] for r in results) / total_requests
 
-    # Summary text
+    generation_tpm = (
+        (total_gen_tokens / total_gen_time) * 60 if total_gen_time > 0 else 0
+    )
+    end_to_end_tpm = (
+        ((total_prompt_tokens + total_gen_tokens) / total_end_time) * 60
+        if total_end_time > 0
+        else 0
+    )
+
     summary = (
-        f"\n--- Async Benchmark Results ---\n"
+        "\n--- Async Benchmark Results ---\n"
         f"Model: {MODEL}\n"
         f"Workers: {CONCURRENT_USERS}\n"
         f"Questions per worker: {NUM_QUESTIONS}\n"
@@ -142,34 +193,37 @@ async def benchmark_async():
         f"95th percentile latency: {p95_latency:.3f}s\n"
         f"Throughput: {throughput:.2f} req/s\n"
         f"Total duration: {total_time:.2f}s\n"
+        f"\n--- Token Throughput ---\n"
+        f"Prompt tokens: {total_prompt_tokens}\n"
+        f"Generated tokens: {total_gen_tokens}\n"
+        f"Generation TPM: {generation_tpm:.2f}\n"
+        f"End-to-End TPM: {end_to_end_tpm:.2f}\n"
     )
 
-    print(summary)
+    logger.info(summary)
 
-    # Save results
     df = pd.DataFrame(results)
     df.to_csv(OUTPUT_CSV, index=False, sep=";")
 
     with open(OUTPUT_LOG, "w", encoding="utf-8") as f:
         f.write(summary)
 
-    print(f"CSV saved to: {OUTPUT_CSV}")
-    print(f"Summary saved to: {OUTPUT_LOG}")
+    logger.info("CSV saved to: %s", OUTPUT_CSV)
+    logger.info("Summary saved to: %s", OUTPUT_LOG)
 
 
-# Entry point
 if __name__ == "__main__":
     t0 = datetime.now(TZ)
     asyncio.run(benchmark_async())
     t1 = datetime.now(TZ)
 
-    start_str = t0.strftime('%Y-%m-%d %H:%M:%S')
-    end_str = t1.strftime('%Y-%m-%d %H:%M:%S')
+    start_str = t0.strftime("%Y-%m-%d %H:%M:%S")
+    end_str = t1.strftime("%Y-%m-%d %H:%M:%S")
     duration = (t1 - t0).total_seconds()
 
-    print(f"Time start: {start_str}")
-    print(f"Time end:   {end_str}")
-    print(f"Total execution time: {duration:.2f} seconds")
+    logger.info("Time start: %s", start_str)
+    logger.info("Time end:   %s", end_str)
+    logger.info("Total execution time: %.2f seconds", duration)
 
     with open(OUTPUT_LOG, "a", encoding="utf-8") as f:
         f.write(

@@ -1,9 +1,0 @@
-
---- Benchmark Results ---
-Model: llama3.2:3b
-Samples tested: 1221
-Accuracy: 59.05%
-Average latency: 0.15s
-95th percentile latency: 0.33s
-Throughput: 6.46 req/s
-Total duration: 189.15s

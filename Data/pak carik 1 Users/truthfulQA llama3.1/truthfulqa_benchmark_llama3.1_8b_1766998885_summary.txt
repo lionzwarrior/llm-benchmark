@@ -1,0 +1,21 @@
+
+--- TruthfulQA Async Benchmark ---
+Model: llama3.1:8b
+Workers: 1
+Questions per worker: 817
+Total requests: 817
+Average latency: 2.73s
+95th percentile latency: 4.72s
+Throughput: 0.37 req/s
+Total duration: 2226.88s
+
+--- Token Throughput ---
+Prompt tokens: 18641
+Generated tokens: 253273
+Generation TPM: 8995.52
+End-to-End TPM: 7335.08
+
+--- Execution Time ---
+Start time: 2025-12-29 16:01:25
+End time:   2025-12-29 16:38:32
+Total execution time: 2226.94 seconds

@@ -12,7 +12,7 @@ pak carik: http://ollama-service:11434/api/generate
 
 
 ## Open Grafana
-kubectl port-forward svc/prometheus-grafana 3000:80
+kubectl -n remmanuel port-forward svc/prometheus-grafana 3000:80
 
 ssh -L 3000:127.0.0.1:3000 raphael@pakcarik.petra.ac.id
 
@@ -23,7 +23,7 @@ source venv/bin/activate
 chmod +x monitor.sh
 
 ./monitor.sh & MONITOR_PID=$!
-python benchmark_ollama_truthfulqa_parallel.py
+python benchmark_ollama_csqa_parallel.py
 while read pid; do
     kill "$pid" 2>/dev/null
 done < monitor_pids.txt
@@ -37,13 +37,13 @@ docker push lionzwarrior10/llm-benchmark
 
 
 # Copy to get data from pod in kubernetes
-kubectl cp llm-benchmark-9cdcdcbb7-fhj5b:/app/truthfulqa_benchmark_llama3.1_8b_1765967185.csv ./truthfulqa_benchmark_llama3.1_8b_1765967185.csv
+kubectl -n remmanuel cp llm-benchmark-65b96b594b-xq87f:/app/ollama_async_results_llama3.2_3b_1767251628.csv ./ollama_async_results_llama3.2_3b_1767251628.csv
 
-kubectl cp llm-benchmark-9cdcdcbb7-fhj5b:/app/truthfulqa_benchmark_llama3.1_8b_1765967185_summary.txt ./truthfulqa_benchmark_llama3.1_8b_1765967185_summary.txt
+kubectl -n remmanuel cp llm-benchmark-65b96b594b-xq87f:/app/ollama_async_results_llama3.2_3b_1767251628_summary.txt ./ollama_async_results_llama3.2_3b_1767251628_summary.txt
 
 
 ## Monitor from Grafana
-kubectl port-forward svc/prometheus-grafana 3000:80
+kubectl -n remmanuel port-forward svc/prometheus-grafana 3000:80
 
 ssh -L 3000:127.0.0.1:3000 raphael@pakcarik.petra.ac.id
 
@@ -67,13 +67,11 @@ findstr "%Cpu(s):" .\cpu.txt > cpu_findstr_cpus.txt
 
 
 ## How to get CPU data from cpu.txt in windows
-findstr "%Cpu(s):" .\cpu.txt > cpu_findstr_cpus.txt
-
 Header: us;sy;ni;id;wa;hi;si;st
 
 cpu usage = 100 - <id value>
 
-=100-D2
+=(100-D2)/100
 
 
 ## How to get GPU data from gpu.csv
@@ -83,10 +81,20 @@ just get average from the columns
 
 
 ## How to get memory data from cpu.txt
-findstr "MiB Mem" cpu.txt | findstr /V "Swap" > cpu_findstr_memory.txt
-
 Header: total;free;used;buff/cache
 
 used_percent = (1 - ((free + buff/cache) / total)) * 100
 
-=(1-(B2+D2)/A2)*100
+=(1-(B2+D2)/A2)
+
+
+## How to process data from either dataset commonsenseQA or truthfulQA to get avg latency, 95th percentile latency, throughput, gneration TPM, and end-to-end TPM
+avg latency = AVERAGE(A1:A100)
+
+95th percentile latency = PERCENTILE.INC(A1:A100, 0.95)
+
+throughput = 1 / avg latency
+
+generation TPM =SUM(gen_tokens) / (SUM(gen_eval_ns) / 1E9 / 60)
+
+end-to-end TPM = SUM(gen_tokens) / (SUM(total_ns) / 1E9 / 60)

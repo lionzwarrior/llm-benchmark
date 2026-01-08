@@ -1,0 +1,22 @@
+
+--- Async Benchmark Results ---
+Model: llama3.2:3b
+Workers: 1
+Questions per worker: 1221
+Total requests: 1221
+Accuracy: 61.83%
+Average latency: 0.139s
+95th percentile latency: 0.280s
+Throughput: 7.18 req/s
+Total duration: 170.16s
+
+--- Token Throughput ---
+Prompt tokens: 110423
+Generated tokens: 7659
+Generation TPM: 8345.21
+End-to-End TPM: 41904.85
+
+--- Execution Time ---
+Start time: 2025-12-26 09:46:56
+End time:   2025-12-26 09:49:46
+Total execution time: 170.18 seconds
